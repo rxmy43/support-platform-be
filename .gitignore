@@ -1,0 +1,43 @@
+# Binaries untuk program
+/bin/
+/out/
+
+# Direktori hasil go build
+/dist/
+
+# File executable (dapat disesuaikan dengan nama program)
+/nama-program
+/nama-program.exe
+
+# Dependencies vendor (opsional, sesuaikan dengan preferensi)
+/vendor/
+
+# File lingkungan (environment variables)
+.env
+.env.local
+
+# File profiling Go
+*.prof
+*.trace
+
+# Test output
+/test-results/
+
+# IDE/Editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# File log
+*.log
+
+# Cache dan file sementara
+.cache/
+/tmp/
+
+# Go workspace (jika menggunakan Go 1.18+ dengan workspace)
+.Go/
+
+# File build yang dihasilkan otomatis
+/build/
