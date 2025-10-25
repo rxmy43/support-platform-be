@@ -1,6 +1,10 @@
 package support
 
-import "github.com/shopspring/decimal"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 type Support struct {
 	ID        uint            `db:"id"`
@@ -8,4 +12,6 @@ type Support struct {
 	CreatorID uint            `db:"creator_id"`
 	Amount    decimal.Decimal `db:"amount"`
 	Status    string          `db:"status"`
+	SupportID string          `db:"support_id"`
+	SentAt    time.Time       `db:"sent_at"`
 }

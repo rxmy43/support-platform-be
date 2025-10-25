@@ -1,13 +1,14 @@
 # ========================
 # VARIABLES
 # ========================
-APP_NAME := yourapp
+APP_NAME := supportplatform
 API_CMD := ./cmd/server
 WORKER_CMD := ./cmd/worker
 GO := go
 PORT := 8080
 MIGRATE_PATH := ./internal/db/migrations
 DB_URL := postgres://postgres:psql1412@localhost:5432/support_platform_db?sslmode=disable&TimeZone=UTC
+DB_URL_RENDER := ${DATABASE_URL_RENDER}
 
 # ========================
 # DEFAULT
@@ -107,3 +108,20 @@ migrate-force:
 	@read -p "Enter version to force: " VERSION; \
 	migrate -path $(MIGRATE_PATH) -database "$(DB_URL)" force $$VERSION
 	echo "Forced to version $$VERSION."
+
+# ========================
+# DEPLOY (for Render)
+# ========================
+.PHONY: deploy
+deploy:
+	@echo ">>> Installing migrate CLI if not installed..."
+	go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+	@echo ">>> Building binary..."
+	make build
+
+	@echo ">>> Running migrations..."
+	migrate -path $(MIGRATE_PATH) -database "$(DB_URL_RENDER)" up
+
+	@echo ">>> Starting server..."
+	./bin/$(APP_NAME)

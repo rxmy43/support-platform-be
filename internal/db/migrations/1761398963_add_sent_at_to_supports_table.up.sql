@@ -1,0 +1,2 @@
+ALTER TABLE supports
+    ADD COLUMN sent_at TIMESTAMPTZ DEFAULT NOW();
