@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -23,6 +24,10 @@ func InitApp() *AppContext {
 		log.Fatal("Database connection failed ", err)
 	}
 	defer db.Close()
+
+	if err := db.SeedUsers(context.Background(), DB); err != nil {
+		log.Fatal(err)
+	}
 
 	router := router.NewRouter(DB)
 

@@ -45,7 +45,7 @@ func (s *AuthService) GenerateOTP(ctx context.Context, req GenerateOTPRequest) (
 	return otp, nil
 }
 
-func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*user.User, *apperror.AppError) {
+func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*UserResponse, *apperror.AppError) {
 	val, ok := otpStore.Load(req.Phone)
 	if !ok || val.(string) != req.OTP {
 		return nil, apperror.BadRequest("invalid otp", apperror.CodeInvalidCredentials)
@@ -57,5 +57,10 @@ func (s *AuthService) VerifyOTP(ctx context.Context, req VerifyOTPRequest) (*use
 	}
 
 	otpStore.Delete(req.Phone)
-	return user, nil
+	return &UserResponse{
+		ID:    user.ID,
+		Name:  user.Name,
+		Phone: user.Phone,
+		Role:  user.Role,
+	}, nil
 }

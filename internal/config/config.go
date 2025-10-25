@@ -28,10 +28,12 @@ type JWTConfig struct {
 }
 
 type Config struct {
-	Env      string
-	Port     string
-	LogLevel string
-	JWT      JWTConfig
+	Env        string
+	Port       string
+	AppURL     string
+	GroqAPIKey string
+	LogLevel   string
+	JWT        JWTConfig
 
 	DB DBConfig
 }
@@ -46,9 +48,11 @@ func Load() *Config {
 	refreshTTLHours, _ := strconv.Atoi(os.Getenv("JWT_REFRESH_EXPIRATION_HOURS"))
 
 	return &Config{
-		Env:      os.Getenv("ENV"),
-		Port:     os.Getenv("PORT"),
-		LogLevel: os.Getenv("LOG_LEVEL"),
+		Env:        os.Getenv("ENV"),
+		Port:       os.Getenv("PORT"),
+		AppURL:     os.Getenv("APP_URL"),
+		GroqAPIKey: os.Getenv("GROQ_API_KEY"),
+		LogLevel:   os.Getenv("LOG_LEVEL"),
 
 		JWT: JWTConfig{
 			AccessSecret:  os.Getenv("JWT_ACCESS_SECRET"),

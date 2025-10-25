@@ -11,9 +11,10 @@ const CodeUnknown ErrorCode = "unknown_error_code"
 
 // Domain: API Response
 const (
-	CodeInternalServerError ErrorCode = "api.internal_server_error"
-	CodeMethodNotAllowed    ErrorCode = "api.method_not_allowed"
-	CodeServiceUnavailable  ErrorCode = "api.code_service_unavailable"
+	CodeInternalServerError      ErrorCode = "api.internal_server_error"
+	CodeMethodNotAllowed         ErrorCode = "api.method_not_allowed"
+	CodeServiceUnavailable       ErrorCode = "api.code_service_unavailable"
+	CodeExternalAPIRequestFailed ErrorCode = "api.code_external_api_request_failed"
 )
 
 // Domain: Field Validations
@@ -29,6 +30,7 @@ const (
 	CodeFieldReadOnly            ErrorCode = "validation.field_read_only"
 	CodeFieldImmutable           ErrorCode = "validation.field_immutable"
 	CodeInvalidRequestJSONFormat ErrorCode = "validation.invalid_request_json_format"
+	CodeInvalidRequestFormFormat ErrorCode = "validation.invalid_request_form_format"
 	CodeResourceNotFound         ErrorCode = "validation.resource_not_found"
 	CodeInvalidCredentials       ErrorCode = "validation.invalid_credentials"
 
@@ -117,6 +119,7 @@ const (
 	CodeFileTooLarge            ErrorCode = "validation.file_too_large"
 	CodeFileTypeInvalid         ErrorCode = "validation.file_type_invalid"
 	CodeFileCorrupted           ErrorCode = "validation.file_corrupted"
+	CodeFileNotFound            ErrorCode = "validation.file_not_found"
 	CodeFileUploadFailed        ErrorCode = "validation.file_upload_failed"
 	CodeImageDimensionsInvalid  ErrorCode = "validation.image_dimensions_invalid"
 	CodeImageAspectRatioInvalid ErrorCode = "validation.image_aspect_ratio_invalid"

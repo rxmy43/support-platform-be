@@ -16,20 +16,27 @@ type PaginationMeta struct {
 	TotalPages int `json:"total_pages,omitempty"`
 }
 
+type ResponseStatus string
+
+const (
+	StatusSuccess ResponseStatus = "success"
+	StatusError   ResponseStatus = "error"
+)
+
 type SuccessResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message,omitempty"`
-	Data    any    `json:"data,omitempty"`
+	Status  ResponseStatus `json:"status"`
+	Message string         `json:"message,omitempty"`
+	Data    any            `json:"data,omitempty"`
 }
 
 type SuccessPaginateResponse struct {
-	Status string         `jsoon:"status"`
-	Data   []any          `json:"data"`
-	Meta   PaginationMeta `json:"meta"`
+	Status     ResponseStatus `json:"status"`
+	Data       []any          `json:"data"`
+	NextCursor *uint          `json:"next_cursor"`
 }
 
 type ErrorResponse struct {
-	Status        string                `json:"status"`
+	Status        ResponseStatus        `json:"status"`
 	Code          apperror.ErrorCode    `json:"code"`
 	Message       string                `json:"message"`
 	NotFoundField string                `json:"not_found_field,omitempty"`
@@ -42,10 +49,12 @@ func ToJSON(w http.ResponseWriter, r *http.Request, payload any) {
 
 	if err, ok := payload.(*apperror.AppError); ok {
 		statusCode := err.HTTPStatus()
+		w.WriteHeader(statusCode)
 
 		resp := ErrorResponse{
-			Status: "error",
-			Code:   err.Code,
+			Status:  StatusError,
+			Code:    err.Code,
+			Message: err.Message,
 		}
 
 		if statusCode == http.StatusUnprocessableEntity && len(err.FieldErrors) > 0 {
@@ -104,7 +113,7 @@ func ToJSON(w http.ResponseWriter, r *http.Request, payload any) {
 
 		w.WriteHeader(appErr.HTTPStatus())
 		resp := ErrorResponse{
-			Status:  "error",
+			Status:  StatusError,
 			Code:    appErr.Code,
 			Message: appErr.Message,
 		}
@@ -124,26 +133,18 @@ func ToJSON(w http.ResponseWriter, r *http.Request, payload any) {
 	switch v := payload.(type) {
 	case string:
 		resp := SuccessResponse{
-			Status:  "success",
+			Status:  StatusSuccess,
 			Message: v,
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 
 	case SuccessResponse:
-		// Direct SuccessResponse struct
-		_ = json.NewEncoder(w).Encode(v)
-
 	case SuccessPaginateResponse:
-		// Paginated data response
-		resp := SuccessPaginateResponse{
-			Status: "success",
-			Data:   v.Data,
-			Meta:   v.Meta,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
+		// Direct struct
+		_ = json.NewEncoder(w).Encode(v)
 	case nil:
 		resp := SuccessResponse{
-			Status:  "success",
+			Status:  StatusSuccess,
 			Message: "Operation completed successfully",
 		}
 		_ = json.NewEncoder(w).Encode(resp)

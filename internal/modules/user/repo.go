@@ -22,7 +22,7 @@ func NewUserRepo(DB *sqlx.DB) *UserRepo {
 
 func (r *UserRepo) FindOneByPhone(ctx context.Context, phone string) (*User, error) {
 	var u User
-	err := r.DB.GetContext(ctx, &u, "SELECT id, name, phone FROM users WHERE phone = $1 LIMIT 1", phone)
+	err := r.DB.GetContext(ctx, &u, "SELECT id, name, phone, role FROM users WHERE phone = $1 LIMIT 1", phone)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,5 @@
+ALTER TABLE users
+DROP CONSTRAINT IF EXISTS users_phone_unique;
+
+ALTER TABLE users
+DROP CONSTRAINT IF EXISTS users_role_check;
