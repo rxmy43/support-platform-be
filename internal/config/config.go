@@ -33,17 +33,21 @@ type CloudinaryConfig struct {
 	ApiSecret string
 }
 
-type Config struct {
-	Env          string
-	Port         string
-	AppURL       string
-	GroqAPIKey   string
-	DuitkuAPIKey string
-	LogLevel     string
-	JWT          JWTConfig
-	Cloudinary   CloudinaryConfig
+type DuitkuAPIConfig struct {
+	MerchantCode string
+	MerchantKey  string
+}
 
-	DB DBConfig
+type Config struct {
+	Env        string
+	Port       string
+	AppURL     string
+	GroqAPIKey string
+	LogLevel   string
+	JWT        JWTConfig
+	Cloudinary CloudinaryConfig
+	Duitku     DuitkuAPIConfig
+	DB         DBConfig
 }
 
 func Load() *Config {
@@ -56,12 +60,11 @@ func Load() *Config {
 	refreshTTLHours, _ := strconv.Atoi(os.Getenv("JWT_REFRESH_EXPIRATION_HOURS"))
 
 	return &Config{
-		Env:          os.Getenv("ENV"),
-		Port:         os.Getenv("PORT"),
-		AppURL:       os.Getenv("APP_URL"),
-		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
-		DuitkuAPIKey: os.Getenv("DUITKU_API_KEY"),
-		LogLevel:     os.Getenv("LOG_LEVEL"),
+		Env:        os.Getenv("ENV"),
+		Port:       os.Getenv("PORT"),
+		AppURL:     os.Getenv("APP_URL"),
+		GroqAPIKey: os.Getenv("GROQ_API_KEY"),
+		LogLevel:   os.Getenv("LOG_LEVEL"),
 
 		JWT: JWTConfig{
 			AccessSecret:  os.Getenv("JWT_ACCESS_SECRET"),
@@ -74,6 +77,11 @@ func Load() *Config {
 			Name:      os.Getenv("CLOUDINARY_NAME"),
 			ApiKey:    os.Getenv("CLOUDINARY_API_KEY"),
 			ApiSecret: os.Getenv("CLOUDINARY_API_SECRET"),
+		},
+
+		Duitku: DuitkuAPIConfig{
+			MerchantCode: os.Getenv("DUITKY_MERCHANT_CODE"),
+			MerchantKey:  os.Getenv("DUITKU_API_KEY"),
 		},
 
 		DB: DBConfig{

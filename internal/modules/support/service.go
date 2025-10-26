@@ -1,11 +1,178 @@
 package support
 
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/rxmy43/support-platform/internal/apperror"
+	"github.com/rxmy43/support-platform/internal/config"
+	"github.com/rxmy43/support-platform/internal/http/middleware"
+	"github.com/rxmy43/support-platform/internal/modules/user"
+	"github.com/shopspring/decimal"
+)
+
 type SupportService struct {
 	supportRepo *SupportRepo
+	userRepo    *user.UserRepo
 }
 
-func NewSupportService(supportRepo *SupportRepo) *SupportService {
+func NewSupportService(supportRepo *SupportRepo, userRepo *user.UserRepo) *SupportService {
 	return &SupportService{
 		supportRepo: supportRepo,
+		userRepo:    userRepo,
 	}
+}
+
+func (s *SupportService) generateSignature(merchantCode string, timestamp int64, merchantKey string) string {
+	raw := fmt.Sprintf("%s%d%s", merchantCode, timestamp, merchantKey)
+	hash := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(hash[:])
+}
+
+func (s *SupportService) generateTimestamp() (int64, error) {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return 0, err
+	}
+
+	now := time.Now().In(loc)
+	timestampMillis := now.UnixNano() / int64(time.Millisecond)
+
+	return timestampMillis, nil
+}
+
+func (s *SupportService) generateSupportID(timestamp int64, creatorID, fanID uint) string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	randomHex := hex.EncodeToString(b)
+	return fmt.Sprintf("SUPPORT/%d/%s/%d%d", timestamp, randomHex, creatorID, fanID)
+}
+
+func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (string, *apperror.AppError) {
+	// Get and Check fanID
+	fanID := middleware.GetUserID(ctx)
+	if fanID == nil {
+		return "", apperror.Unauthorized("invalid user id", apperror.CodeUnauthorizedOperation)
+	}
+
+	fan, err := s.userRepo.FindByID(ctx, *fanID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", apperror.Unauthorized("invalid credentials", apperror.CodeInvalidCredentials)
+		}
+
+		return "", apperror.InternalServer("failed checking fan credentials").WithCause(err)
+	}
+
+	// Checking fan role
+	if fan.Role != "fan" {
+		return "", apperror.Forbidden("only fan can donate", apperror.CodeUnknown)
+	}
+
+	// Checking amount not zero or negative numbers
+	if req.Amount <= 0 {
+		return "", apperror.BadRequest("amount cannot be lower than or equal to 0", apperror.CodeNegativeNotAllowed)
+	}
+
+	// Check Creator ID
+	creator, err := s.userRepo.FindByID(ctx, req.CreatorID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", apperror.NotFound("creator not found", apperror.CodeResourceNotFound)
+		}
+
+		return "", apperror.InternalServer("failed checking creator id").WithCause(err)
+	}
+
+	// Checking creator role
+	if creator.Role != "creator" {
+		return "", apperror.BadRequest("you only allowed to donate to creator", apperror.CodeUnknown)
+	}
+
+	// Get Duitku API Config
+	cfg := config.Load()
+	merchantCode := cfg.Duitku.MerchantCode
+	merchantKey := cfg.Duitku.MerchantKey
+
+	// Get Timestamp
+	tmstp, e := s.generateTimestamp()
+	if e != nil {
+		return "", apperror.InternalServer("failed generating timestamp").WithCause(err)
+	}
+
+	// Generate Signature
+	signature := s.generateSignature(merchantCode, tmstp, merchantKey)
+
+	// Generate Support ID
+	supportID := s.generateSupportID(tmstp, creator.ID, fan.ID)
+
+	// Construct Request Payload
+	payload := map[string]interface{}{
+		"paymentAmount":   req.Amount,
+		"merchantOrderId": supportID,
+		"productDetails":  fmt.Sprintf("%s provided support of IDR %d to %s", creator.Name, req.Amount, fan.Name),
+		"email":           fmt.Sprintf("%s@gmail.com", strings.ReplaceAll(fan.Phone, "+", "")),
+		"callbackUrl":     "",
+		"returnUrl":       "",
+	}
+
+	body, _ := json.Marshal(payload)
+	httpReq, _ := http.NewRequest("POST", "https", bytes.NewBuffer(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-duitku-signature", signature)
+
+	tmstpStr := strconv.FormatInt(tmstp, 10)
+	httpReq.Header.Set("x-duitku-timestamp", tmstpStr)
+	httpReq.Header.Set("x-duitku-merchantcode", merchantCode)
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return "", apperror.InternalServer("failed hit Duitku API").WithCause(err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		StatusCode    string `json:"statusCode"`
+		StatusMessage string `json:"statusMessage"`
+		Reference     string `json:"reference"`
+		MerchantCode  string `json:"merchantCode"`
+		PaymentURL    string `json:"paymentUrl"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	// Save Support
+	newSupport := &Support{
+		FanID:         fan.ID,
+		CreatorID:     creator.ID,
+		Amount:        decimal.NewFromInt(int64(req.Amount)),
+		SupportID:     supportID,
+		SentAt:        time.Now(),
+		ReferenceCode: result.Reference,
+		Status:        "pending",
+	}
+
+	if err := s.supportRepo.Create(ctx, newSupport); err != nil {
+		return "", apperror.InternalServer("failed creating new support record").WithCause(err)
+	}
+
+	return result.PaymentURL, nil
+}
+
+// func (s *SupportService) verifySignature(merchantCode string, timestamp int64, merchantKey string, signature string) bool {
+// 	genSign := s.generateSignature(merchantCode, timestamp, merchantKey)
+// 	return genSign == signature
+// }
+
+func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbackRequest) *apperror.AppError {
+	return nil
 }
