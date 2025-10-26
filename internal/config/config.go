@@ -27,6 +27,12 @@ type JWTConfig struct {
 	RefreshTTL    time.Duration
 }
 
+type CloudinaryConfig struct {
+	Name      string
+	ApiKey    string
+	ApiSecret string
+}
+
 type Config struct {
 	Env          string
 	Port         string
@@ -35,6 +41,7 @@ type Config struct {
 	DuitkuAPIKey string
 	LogLevel     string
 	JWT          JWTConfig
+	Cloudinary   CloudinaryConfig
 
 	DB DBConfig
 }
@@ -61,6 +68,12 @@ func Load() *Config {
 			RefreshSecret: os.Getenv("JWT_REFRESH_SECRET"),
 			AccessTTL:     time.Duration(accessTTLHours) * time.Hour,
 			RefreshTTL:    time.Duration(refreshTTLHours) * time.Hour,
+		},
+
+		Cloudinary: CloudinaryConfig{
+			Name:      os.Getenv("CLOUDINARY_NAME"),
+			ApiKey:    os.Getenv("CLOUDINARY_API_KEY"),
+			ApiSecret: os.Getenv("CLOUDINARY_API_SECRET"),
 		},
 
 		DB: DBConfig{
