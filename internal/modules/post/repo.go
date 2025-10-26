@@ -3,7 +3,6 @@ package post
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rxmy43/support-platform/internal/repo"
@@ -22,17 +21,8 @@ func NewPostRepo(DB *sqlx.DB) *PostRepo {
 	}
 }
 
-type postWithCreator struct {
-	ID          uint      `db:"id"`
-	CreatorID   uint      `db:"creator_id"`
-	CreatorName string    `db:"creator_name"`
-	Text        string    `db:"text"`
-	MediaURL    string    `db:"media_url"`
-	PublishedAt time.Time `db:"published_at"`
-}
-
-func (r *PostRepo) GetPosts(ctx context.Context, cursor, userID *uint) ([]postWithCreator, *uint, error) {
-	posts := []postWithCreator{}
+func (r *PostRepo) GetPosts(ctx context.Context, cursor, userID *uint) ([]PostResponse, *uint, error) {
+	posts := []PostResponse{}
 	var err error
 
 	queryBase := `

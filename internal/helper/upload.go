@@ -2,10 +2,7 @@ package helper
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"mime/multipart"
-	"path/filepath"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
@@ -26,12 +23,8 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader) (string
 		return "", err
 	}
 
-	h := sha256.New()
-	h.Write([]byte(header.Filename))
-	hashedName := hex.EncodeToString(h.Sum(nil)) + filepath.Ext(header.Filename)
-
 	resp, err := cld.Upload.Upload(context.Background(), file, uploader.UploadParams{
-		PublicID: hashedName,
+		ResourceType: "auto",
 	})
 	if err != nil {
 		return "", err

@@ -66,7 +66,7 @@ func (s *PostService) Create(ctx context.Context, req PostCreateRequest) *apperr
 		return apperror.ValidationError("create post validation error", fieldErrs)
 	}
 
-	filename, err := helper.SaveUploadedFile(req.File, req.Header)
+	secureURL, err := helper.SaveUploadedFile(req.File, req.Header)
 	if err != nil {
 		return apperror.InternalServer("failed when uploading file").WithCause(err)
 	}
@@ -74,7 +74,7 @@ func (s *PostService) Create(ctx context.Context, req PostCreateRequest) *apperr
 	newPost := &Post{
 		CreatorID: req.CreatorID,
 		Text:      req.Text,
-		MediaURL:  fmt.Sprintf("uploads/%s", filename),
+		MediaURL:  secureURL,
 	}
 
 	if err := s.postRepo.Create(ctx, newPost); err != nil {
@@ -167,20 +167,5 @@ func (s *PostService) FindAll(ctx context.Context, cursor, userID *uint) ([]Post
 	if err != nil {
 		return []PostResponse{}, nil, apperror.InternalServer("failed get all posts").WithCause(err)
 	}
-
-	appUrl := config.Load().AppURL
-
-	postResponse := make([]PostResponse, len(posts))
-	for i, p := range posts {
-		postResponse[i] = PostResponse{
-			ID:          p.ID,
-			CreatorID:   p.CreatorID,
-			CreatorName: p.CreatorName,
-			Text:        p.Text,
-			MediaURL:    fmt.Sprintf("%s/%s", appUrl, p.MediaURL),
-			PublishedAt: p.PublishedAt,
-		}
-	}
-
-	return postResponse, nextCursor, nil
+	return posts, nextCursor, nil
 }

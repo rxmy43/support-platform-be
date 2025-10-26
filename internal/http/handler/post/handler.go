@@ -101,6 +101,7 @@ func (h *PostHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	posts, nextCursor, appErr := h.postService.FindAll(r.Context(), cursor, userID)
 	if appErr != nil {
 		response.ToJSON(w, r, appErr)
+		return
 	}
 
 	data := make([]any, len(posts))
