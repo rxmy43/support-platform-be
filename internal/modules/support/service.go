@@ -17,6 +17,7 @@ import (
 	"github.com/rxmy43/support-platform/internal/apperror"
 	"github.com/rxmy43/support-platform/internal/config"
 	"github.com/rxmy43/support-platform/internal/http/middleware"
+	"github.com/rxmy43/support-platform/internal/modules/balance"
 	"github.com/rxmy43/support-platform/internal/modules/user"
 	"github.com/rxmy43/support-platform/internal/socket"
 	"github.com/shopspring/decimal"
@@ -25,13 +26,15 @@ import (
 type SupportService struct {
 	supportRepo *SupportRepo
 	userRepo    *user.UserRepo
+	balanceRepo *balance.BalanceRepo
 	hub         *socket.Hub
 }
 
-func NewSupportService(supportRepo *SupportRepo, userRepo *user.UserRepo, hub *socket.Hub) *SupportService {
+func NewSupportService(supportRepo *SupportRepo, userRepo *user.UserRepo, balanceRepo *balance.BalanceRepo, hub *socket.Hub) *SupportService {
 	return &SupportService{
 		supportRepo: supportRepo,
 		userRepo:    userRepo,
+		balanceRepo: balanceRepo,
 		hub:         hub,
 	}
 }
@@ -199,6 +202,43 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 
 	if req.ResultCode != "00" {
 		return IGNORED, nil
+	}
+
+	// Transaction
+	tx, err := s.supportRepo.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", apperror.InternalServer("failed begin transaction").WithCause(err)
+	}
+	defer tx.Rollback()
+
+	// Update Balance Creator
+	query := `
+		UPDATE balances
+		SET amount = amount + $1
+		WHERE user_id = $2
+	`
+
+	_, err = tx.ExecContext(ctx, query, req.Amount, support.CreatorID)
+	if err != nil {
+		return "", apperror.InternalServer("failed updating balance").WithCause(err)
+	}
+
+	// Update payment status
+	query = `
+		UPDATE supports
+		SET status = 'paid'
+		WHERE reference_code = $1
+		AND support_id = $2
+	`
+
+	_, err = tx.ExecContext(ctx, query, req.Reference, req.MerchantOrderID)
+	if err != nil {
+		return "", apperror.InternalServer("failed updating payment status").WithCause(err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return "", apperror.InternalServer("failed committing transaction").WithCause(err)
 	}
 
 	msg := map[string]interface{}{
