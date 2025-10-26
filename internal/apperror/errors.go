@@ -2,6 +2,7 @@ package apperror
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -39,6 +40,7 @@ func (e *AppError) Unwrap() error {
 
 // WithCause adds an underlying cause to the error
 func (e *AppError) WithCause(cause error) *AppError {
+	log.Printf("Error 500: %v", cause)
 	e.cause = cause
 	return e
 }
