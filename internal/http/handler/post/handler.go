@@ -27,6 +27,14 @@ func (h *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var userID uint
+	if userRole := middleware.GetUserRole(r.Context()); userRole == "creator" {
+		userID = *middleware.GetUserID(r.Context())
+	} else {
+		response.ToJSON(w, r, apperror.Forbidden("only creator allowed to publish post", apperror.CodeUnknown))
+		userID = 0
+	}
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		response.ToJSON(w, r, apperror.BadRequest("failed to read file", apperror.CodeFileNotFound))
@@ -34,10 +42,8 @@ func (h *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	creatorID, _ := strconv.ParseUint(r.FormValue("creator_id"), 10, 64)
-
 	req := post.PostCreateRequest{
-		CreatorID: uint(creatorID),
+		CreatorID: userID,
 		Text:      r.FormValue("text"),
 		File:      file,
 		Header:    header,
