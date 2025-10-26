@@ -10,6 +10,7 @@ import (
 	"github.com/rxmy43/support-platform/internal/http/handler/auth"
 	"github.com/rxmy43/support-platform/internal/http/handler/post"
 	"github.com/rxmy43/support-platform/internal/http/handler/support"
+	"github.com/rxmy43/support-platform/internal/socket"
 )
 
 func NewRouter(db *sqlx.DB) http.Handler {
@@ -29,6 +30,9 @@ func NewRouter(db *sqlx.DB) http.Handler {
 
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
+	hub := socket.NewHub()
+	r.Get("/ws", hub.WsHandler)
+
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write([]byte("pong"))
@@ -38,7 +42,7 @@ func NewRouter(db *sqlx.DB) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		auth.AuthRoutes(r, db)
 		post.PostRoutes(r, db)
-		support.SupportRoutes(r, db)
+		support.SupportRoutes(r, db, hub)
 	})
 
 	return r

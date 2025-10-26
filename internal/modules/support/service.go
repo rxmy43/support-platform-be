@@ -18,18 +18,21 @@ import (
 	"github.com/rxmy43/support-platform/internal/config"
 	"github.com/rxmy43/support-platform/internal/http/middleware"
 	"github.com/rxmy43/support-platform/internal/modules/user"
+	"github.com/rxmy43/support-platform/internal/socket"
 	"github.com/shopspring/decimal"
 )
 
 type SupportService struct {
 	supportRepo *SupportRepo
 	userRepo    *user.UserRepo
+	hub         *socket.Hub
 }
 
-func NewSupportService(supportRepo *SupportRepo, userRepo *user.UserRepo) *SupportService {
+func NewSupportService(supportRepo *SupportRepo, userRepo *user.UserRepo, hub *socket.Hub) *SupportService {
 	return &SupportService{
 		supportRepo: supportRepo,
 		userRepo:    userRepo,
+		hub:         hub,
 	}
 }
 
@@ -120,7 +123,7 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 	payload := map[string]interface{}{
 		"paymentAmount":   req.Amount,
 		"merchantOrderId": supportID,
-		"productDetails":  fmt.Sprintf("%s provided support of IDR %d to %s", creator.Name, req.Amount, fan.Name),
+		"productDetails":  fmt.Sprintf("%s provided support of IDR %d to %s", fan.Name, req.Amount, creator.Name),
 		"email":           fmt.Sprintf("%s@gmail.com", strings.ReplaceAll(fan.Phone, "+", "")),
 		"callbackUrl":     "",
 		"returnUrl":       "",
@@ -154,13 +157,14 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 
 	// Save Support
 	newSupport := &Support{
-		FanID:         fan.ID,
-		CreatorID:     creator.ID,
-		Amount:        decimal.NewFromInt(int64(req.Amount)),
-		SupportID:     supportID,
-		SentAt:        time.Now(),
-		ReferenceCode: result.Reference,
-		Status:        "pending",
+		FanID:            fan.ID,
+		CreatorID:        creator.ID,
+		Amount:           decimal.NewFromInt(int64(req.Amount)),
+		SupportID:        supportID,
+		SentAt:           time.Now(),
+		ReferenceCode:    result.Reference,
+		Status:           "pending",
+		PaymentTimestamp: tmstp,
 	}
 
 	if err := s.supportRepo.Create(ctx, newSupport); err != nil {
@@ -170,11 +174,42 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 	return result.PaymentURL, nil
 }
 
-// func (s *SupportService) verifySignature(merchantCode string, timestamp int64, merchantKey string, signature string) bool {
-// 	genSign := s.generateSignature(merchantCode, timestamp, merchantKey)
-// 	return genSign == signature
-// }
+func (s *SupportService) verifySignature(merchantCode string, timestamp int64, merchantKey string, signature string) bool {
+	genSign := s.generateSignature(merchantCode, timestamp, merchantKey)
+	return genSign == signature
+}
 
-func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbackRequest) *apperror.AppError {
-	return nil
+func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbackRequest) (string, *apperror.AppError) {
+	const (
+		IGNORED string = "IGNORED"
+		SUCCESS string = "SUCCESS"
+	)
+
+	support, err := s.supportRepo.GetPaymentTimestamp(ctx, req.Reference, req.MerchantOrderID)
+	if err != nil {
+		return "", apperror.InternalServer("failed get payment timestamp").WithCause(err)
+	}
+
+	cfg := config.Load()
+	merchantKey := cfg.Duitku.MerchantKey
+
+	if !s.verifySignature(req.MerchantCode, support.PaymentTimestamp, merchantKey, req.Signature) {
+		return "", apperror.Forbidden("invalid signature", apperror.CodeUnknown)
+	}
+
+	if req.ResultCode != "00" {
+		return IGNORED, nil
+	}
+
+	msg := map[string]interface{}{
+		"amount":       req.Amount,
+		"reference":    req.Reference,
+		"fan_name":     support.FanName,
+		"fan_id":       support.FanID,
+		"creator_name": support.CreatorName,
+		"creator_id":   support.CreatorID,
+	}
+
+	s.hub.BroadcastToCreator(support.CreatorID, msg)
+	return SUCCESS, nil
 }
