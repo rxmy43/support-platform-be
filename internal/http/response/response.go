@@ -138,8 +138,7 @@ func ToJSON(w http.ResponseWriter, r *http.Request, payload any) {
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 
-	case SuccessResponse:
-	case SuccessPaginateResponse:
+	case SuccessResponse, SuccessPaginateResponse:
 		// Direct struct
 		_ = json.NewEncoder(w).Encode(v)
 	case nil:

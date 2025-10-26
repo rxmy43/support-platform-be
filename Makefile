@@ -7,8 +7,8 @@ WORKER_CMD := ./cmd/worker
 GO := go
 PORT := 8080
 MIGRATE_PATH := ./internal/db/migrations
-DB_URL := postgres://postgres:psql1412@localhost:5432/support_platform_db?sslmode=disable&TimeZone=UTC
-DB_URL_RENDER := ${DATABASE_URL_RENDER}
+# DB_URL := postgres://postgres:psql1412@localhost:5432/support_platform_db?sslmode=disable&TimeZone=UTC
+DB_URL := postgresql://neondb_owner:npg_soxp71WtwKNg@ep-old-frog-afa64s8n-pooler.c-2.us-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 
 # ========================
 # DEFAULT
