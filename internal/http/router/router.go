@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/rxmy43/support-platform/internal/http/handler/auth"
 	"github.com/rxmy43/support-platform/internal/http/handler/post"
+	"github.com/rxmy43/support-platform/internal/http/handler/support"
 )
 
 func NewRouter(db *sqlx.DB) http.Handler {
@@ -37,6 +38,7 @@ func NewRouter(db *sqlx.DB) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		auth.AuthRoutes(r, db)
 		post.PostRoutes(r, db)
+		support.SupportRoutes(r, db)
 	})
 
 	return r
