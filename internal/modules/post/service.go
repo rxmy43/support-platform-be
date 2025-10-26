@@ -126,7 +126,6 @@ The caption must not exceed 500 characters.`,
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Access-Control-Allow-Origin", "*")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)

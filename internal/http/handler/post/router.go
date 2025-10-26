@@ -15,11 +15,10 @@ func PostRoutes(r chi.Router, db *sqlx.DB) {
 	postService := post.NewPostService(postRepo, userRepo)
 	handler := NewPostHandler(postService)
 
-	r.Post("/posts/ai-caption", handler.GenerateCaption)
-
 	r.Route("/posts", func(r chi.Router) {
 		r.Use(middleware.UserContext)
 		r.Post("/", handler.Create)
 		r.Get("/", handler.FindAll)
+		r.Post("/ai-caption", handler.GenerateCaption)
 	})
 }
