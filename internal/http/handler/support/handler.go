@@ -2,7 +2,7 @@ package support
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 
 	"github.com/rxmy43/support-platform/internal/apperror"
@@ -40,7 +40,7 @@ func (h *SupportHandler) PaymentCallback(w http.ResponseWriter, r *http.Request)
 	var payload map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		response.ToJSON(w, r, apperror.BadRequest("invalid request json format", apperror.CodeInvalidRequestJSONFormat))
-		log.Println("payload : ", payload)
+		fmt.Printf("%+v\n", payload)
 		return
 	}
 
