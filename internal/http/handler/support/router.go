@@ -14,9 +14,10 @@ func SupportRoutes(r chi.Router, db *sqlx.DB) {
 	supportService := support.NewSupportService(supportRepo, userRepo)
 	handler := NewSupportHandler(supportService)
 
+	r.Post("/payment/callback", handler.PaymentCallback)
+
 	r.Route("/supports", func(r chi.Router) {
 		r.Use(middleware.UserContext)
 		r.Post("/", handler.Donate)
-		r.Post("/callback", handler.PaymentCallback)
 	})
 }
