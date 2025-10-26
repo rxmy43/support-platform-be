@@ -126,8 +126,10 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 		"returnUrl":       "",
 	}
 
+	url := "https://api-sandbox.duitku.com/api/merchant/createInvoice"
+
 	body, _ := json.Marshal(payload)
-	httpReq, _ := http.NewRequest("POST", "https", bytes.NewBuffer(body))
+	httpReq, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-duitku-signature", signature)
 
