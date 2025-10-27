@@ -10,6 +10,7 @@ import (
 
 func SeedUsers(ctx context.Context, db *sqlx.DB) error {
 	users := []user.User{
+		// Creators
 		{Name: "NovaArtemis", Phone: "+62811100001", Role: "creator"},
 		{Name: "LumenKai", Phone: "+62811100002", Role: "creator"},
 		{Name: "OrionVex", Phone: "+62811100003", Role: "creator"},
@@ -17,14 +18,17 @@ func SeedUsers(ctx context.Context, db *sqlx.DB) error {
 		{Name: "VegaSol", Phone: "+62811100005", Role: "creator"},
 		{Name: "EonLyra", Phone: "+62811100006", Role: "creator"},
 		{Name: "CyraZen", Phone: "+62811100007", Role: "creator"},
+
+		// Fans
 		{Name: "KaiRen", Phone: "+62811100008", Role: "fan"},
 		{Name: "MiraSol", Phone: "+62811100009", Role: "fan"},
 		{Name: "LeoNix", Phone: "+62811100010", Role: "fan"},
 	}
 
+	// INSERT user + RETURNING id, pakai positional params
 	userQuery := `
 		INSERT INTO users (name, phone, role)
-		VALUES (:name, :phone, :role)
+		VALUES ($1, $2, $3)
 		ON CONFLICT (phone) DO NOTHING
 		RETURNING id;
 	`
@@ -39,12 +43,13 @@ func SeedUsers(ctx context.Context, db *sqlx.DB) error {
 		var userID int64
 		err := db.QueryRowxContext(ctx, userQuery, u.Name, u.Phone, u.Role).Scan(&userID)
 		if err != nil {
-			row := db.QueryRowxContext(ctx, "SELECT id FROM users WHERE phone=$1", u.Phone)
-			if err := row.Scan(&userID); err != nil {
+			err := db.GetContext(ctx, &userID, "SELECT id FROM users WHERE phone=$1", u.Phone)
+			if err != nil {
 				return fmt.Errorf("failed to get user id for %s: %w", u.Name, err)
 			}
 		}
 
+		// insert balance 0
 		if _, err := db.ExecContext(ctx, balanceQuery, userID); err != nil {
 			return fmt.Errorf("failed to seed balance for user %s: %w", u.Name, err)
 		}
