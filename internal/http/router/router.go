@@ -8,12 +8,13 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jmoiron/sqlx"
 	"github.com/rxmy43/support-platform/internal/http/handler/auth"
+	"github.com/rxmy43/support-platform/internal/http/handler/balance"
 	"github.com/rxmy43/support-platform/internal/http/handler/post"
 	"github.com/rxmy43/support-platform/internal/http/handler/support"
 	"github.com/rxmy43/support-platform/internal/socket"
 )
 
-func NewRouter(db *sqlx.DB) http.Handler {
+func NewRouter(db *sqlx.DB, hub *socket.Hub) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -30,7 +31,6 @@ func NewRouter(db *sqlx.DB) http.Handler {
 
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
-	hub := socket.NewHub()
 	r.Get("/ws", hub.WsHandler)
 
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +43,7 @@ func NewRouter(db *sqlx.DB) http.Handler {
 		auth.AuthRoutes(r, db)
 		post.PostRoutes(r, db)
 		support.SupportRoutes(r, db, hub)
+		balance.BalanceRoutes(r, db)
 	})
 
 	return r

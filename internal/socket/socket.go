@@ -14,11 +14,12 @@ import (
 )
 
 type Hub struct {
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	clients      map[uint]map[*websocket.Conn]bool
 	upgrader     websocket.Upgrader
 	pingInterval time.Duration
 	pongWait     time.Duration
+	writeWait    time.Duration
 }
 
 type EventMessage struct {
@@ -34,6 +35,7 @@ func NewHub() *Hub {
 		},
 		pingInterval: 30 * time.Second,
 		pongWait:     60 * time.Second,
+		writeWait:    10 * time.Second,
 	}
 }
 
@@ -44,6 +46,7 @@ func (h *Hub) Register(creatorID uint, conn *websocket.Conn) {
 		h.clients[creatorID] = make(map[*websocket.Conn]bool)
 	}
 	h.clients[creatorID][conn] = true
+	log.Printf("New connection registered for creator_id: %d. Total connections: %d", creatorID, len(h.clients[creatorID]))
 }
 
 func (h *Hub) Unregister(creatorID uint, conn *websocket.Conn) {
@@ -54,36 +57,49 @@ func (h *Hub) Unregister(creatorID uint, conn *websocket.Conn) {
 		if len(conns) == 0 {
 			delete(h.clients, creatorID)
 		}
+		log.Printf("Connection unregistered for creator_id: %d. Remaining connections: %d", creatorID, len(conns))
 	}
+	conn.Close()
 }
 
 func (h *Hub) BroadcastToCreator(creatorID uint, message EventMessage) {
-	h.mu.Lock()
+	h.mu.RLock()
 	conns := h.clients[creatorID]
 	if conns == nil {
-		h.mu.Unlock()
+		h.mu.RUnlock()
+		log.Printf("No connections found for creator_id: %d", creatorID)
 		return
 	}
 
-	// Copy connections to avoid race
+	// Create a copy of connections to avoid blocking during iteration
 	connsCopy := make([]*websocket.Conn, 0, len(conns))
-	for c := range conns {
-		connsCopy = append(connsCopy, c)
+	for conn := range conns {
+		connsCopy = append(connsCopy, conn)
 	}
-	h.mu.Unlock()
+	h.mu.RUnlock()
 
-	b, err := json.Marshal(message)
+	messageBytes, err := json.Marshal(message)
 	if err != nil {
-		log.Println("marshal error:", err)
+		log.Printf("Error marshaling broadcast message for creator_id %d: %v", creatorID, err)
 		return
 	}
 
-	for _, c := range connsCopy {
-		if err := c.WriteMessage(websocket.TextMessage, b); err != nil {
-			h.Unregister(creatorID, c)
-			c.Close()
-		}
+	var wg sync.WaitGroup
+	for _, conn := range connsCopy {
+		wg.Add(1)
+		go func(c *websocket.Conn) {
+			defer wg.Done()
+
+			c.SetWriteDeadline(time.Now().Add(h.writeWait))
+			if err := c.WriteMessage(websocket.TextMessage, messageBytes); err != nil {
+				log.Printf("Error broadcasting to creator_id %d: %v", creatorID, err)
+				h.Unregister(creatorID, c)
+				return
+			}
+			log.Printf("Message successfully broadcast to creator_id: %d", creatorID)
+		}(conn)
 	}
+	wg.Wait()
 }
 
 func (h *Hub) WsHandler(w http.ResponseWriter, r *http.Request) {
@@ -102,11 +118,12 @@ func (h *Hub) WsHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("upgrade:", err)
+		log.Printf("WebSocket upgrade failed for creator_id %d: %v", creatorID, err)
 		return
 	}
+	log.Printf("WebSocket connection established for creator_id: %d", creatorID)
 
-	// Setup heartbeat
+	// Configure connection settings
 	conn.SetReadLimit(512)
 	conn.SetReadDeadline(time.Now().Add(h.pongWait))
 	conn.SetPongHandler(func(string) error {
@@ -115,27 +132,44 @@ func (h *Hub) WsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	h.Register(creatorID, conn)
-	defer func() {
-		h.Unregister(creatorID, conn)
-		conn.Close()
-	}()
 
-	// Ping loop
+	// Create channel to control ping goroutine
+	done := make(chan struct{})
+	defer close(done)
+
+	// Ping goroutine
 	go func() {
 		ticker := time.NewTicker(h.pingInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second)); err != nil {
+		for {
+			select {
+			case <-ticker.C:
+				conn.SetWriteDeadline(time.Now().Add(h.writeWait))
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					log.Printf("Ping failed for creator_id %d: %v", creatorID, err)
+					return
+				}
+			case <-done:
 				return
 			}
 		}
 	}()
 
-	// Read loop (discard messages for now)
+	// Read message loop
+	defer func() {
+		h.Unregister(creatorID, conn)
+		log.Printf("WebSocket connection closed for creator_id: %d", creatorID)
+	}()
+
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("Unexpected WebSocket closure for creator_id %d: %v", creatorID, err)
+			}
 			break
 		}
+		// Reset read deadline for every new message
+		conn.SetReadDeadline(time.Now().Add(h.pongWait))
 	}
 }

@@ -22,5 +22,8 @@ func SupportRoutes(r chi.Router, db *sqlx.DB, hub *socket.Hub) {
 	r.Route("/supports", func(r chi.Router) {
 		r.Use(middleware.UserContext)
 		r.Post("/", handler.Donate)
+		r.Get("/best", handler.GetBestSupporters)
+		r.Get("/fan-spending", handler.GetFanSpending)
+		r.Get("/fan-spending/history", handler.GetFanSpendingHistory)
 	})
 }

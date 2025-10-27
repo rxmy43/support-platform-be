@@ -3,6 +3,7 @@ package support
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -123,13 +124,15 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 	// Generate Support ID
 	supportID := s.generateSupportID(tmstp, creator.ID, fan.ID)
 
+	appUrl := cfg.AppURL
+
 	// Construct Request Payload
 	payload := map[string]interface{}{
 		"paymentAmount":   req.Amount,
 		"merchantOrderId": supportID,
 		"productDetails":  fmt.Sprintf("%s provided support of IDR %d to %s", fan.Name, req.Amount, creator.Name),
 		"email":           fmt.Sprintf("%s@gmail.com", strings.ReplaceAll(fan.Phone, "+", "")),
-		"callbackUrl":     "",
+		"callbackUrl":     fmt.Sprintf("%s/api/payment/callback", appUrl),
 		"returnUrl":       "",
 	}
 
@@ -178,9 +181,11 @@ func (s *SupportService) Donate(ctx context.Context, req DonationRequest) (strin
 	return result.PaymentURL, nil
 }
 
-func (s *SupportService) verifySignature(merchantCode string, timestamp int64, merchantKey string, signature string) bool {
-	genSign := s.generateSignature(merchantCode, timestamp, merchantKey)
-	return genSign == signature
+func (s *SupportService) verifySignature(merchantCode, amount, merchantOrderID, merchantKey, signature string) bool {
+	raw := merchantCode + amount + merchantOrderID + merchantKey
+	hash := md5.Sum([]byte(raw))
+	genSig := hex.EncodeToString(hash[:])
+	return genSig == signature
 }
 
 func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbackRequest) (string, *apperror.AppError) {
@@ -189,65 +194,76 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 		SUCCESS string = "SUCCESS"
 	)
 
+	log.Println("=== PaymentCallback START ===")
+	log.Println("Request received:", req)
+
 	support, err := s.supportRepo.GetPaymentTimestamp(ctx, req.Reference, req.MerchantOrderID)
 	if err != nil {
+		log.Println("Failed to get payment timestamp:", err)
 		return "", apperror.InternalServer("failed get payment timestamp").WithCause(err)
 	}
-
-	log.Println("SUPPORT CREATOR ID => ", support.CreatorID)
-	log.Println("SUPPORT CREATOR Name => ", support.CreatorName)
-	log.Println("SUPPORT Fan ID => ", support.FanID)
-	log.Println("SUPPORT Fan Name => ", support.FanName)
-	log.Println("Rereference => ", req.Reference)
-	log.Println("SupportID => ", req.MerchantOrderID)
 
 	cfg := config.Load()
 	merchantKey := cfg.Duitku.MerchantKey
 
-	if !s.verifySignature(req.MerchantCode, support.PaymentTimestamp, merchantKey, req.Signature) {
+	if !s.verifySignature(req.MerchantCode, req.Amount, req.MerchantOrderID, merchantKey, req.Signature) {
 		return "", apperror.Forbidden("invalid signature", apperror.CodeUnknown)
 	}
+	log.Println("Signature verification PASSED")
 
 	if req.ResultCode != "00" {
+		log.Println("ResultCode not 00, ignoring transaction")
 		return IGNORED, nil
 	}
+	log.Println("ResultCode is 00, processing transaction")
 
-	// Transaction
 	tx, err := s.supportRepo.DB.BeginTx(ctx, nil)
 	if err != nil {
+		log.Println("Failed to begin transaction:", err)
 		return "", apperror.InternalServer("failed begin transaction").WithCause(err)
 	}
 	defer tx.Rollback()
+	log.Println("Transaction started")
 
-	// Update Balance Creator
-	query := `
-		UPDATE balances
-		SET amount = amount + $1
-		WHERE user_id = $2
-	`
-
-	_, err = tx.ExecContext(ctx, query, req.Amount, support.CreatorID)
+	amountInt, err := strconv.ParseInt(req.Amount, 10, 64)
 	if err != nil {
+		log.Println("Invalid amount:", req.Amount)
+		return "", apperror.BadRequest("invalid amount", apperror.CodeUnknown)
+	}
+
+	query := `
+    UPDATE balances
+    SET amount = amount + $1
+    WHERE user_id = $2
+`
+	res, err := tx.ExecContext(ctx, query, amountInt, support.CreatorID)
+	if err != nil {
+		log.Println("Failed updating balance:", err)
 		return "", apperror.InternalServer("failed updating balance").WithCause(err)
 	}
 
-	// Update payment status
+	affected, _ := res.RowsAffected()
+	log.Println("Balance update affected rows:", affected)
+
 	query = `
 		UPDATE supports
 		SET status = 'paid'
 		WHERE reference_code = $1
 		AND support_id = $2
 	`
-
-	_, err = tx.ExecContext(ctx, query, req.Reference, req.MerchantOrderID)
+	res, err = tx.ExecContext(ctx, query, req.Reference, req.MerchantOrderID)
 	if err != nil {
+		log.Println("Failed updating support status:", err)
 		return "", apperror.InternalServer("failed updating payment status").WithCause(err)
 	}
+	affected, _ = res.RowsAffected()
+	log.Println("Support status update affected rows:", affected)
 
-	// Commit transaction
 	if err := tx.Commit(); err != nil {
+		log.Println("Failed committing transaction:", err)
 		return "", apperror.InternalServer("failed committing transaction").WithCause(err)
 	}
+	log.Println("Transaction committed")
 
 	msg := socket.EventMessage{
 		Event: "support_received",
@@ -261,6 +277,66 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 		},
 	}
 
+	log.Println("Broadcasting event to creator:", support.CreatorID)
 	s.hub.BroadcastToCreator(support.CreatorID, msg)
+	log.Println("=== PaymentCallback END ===")
 	return SUCCESS, nil
+}
+
+func (s *SupportService) GetSupporters(ctx context.Context, cursor *uint, creatorID uint) ([]BestSupporters, *uint, *apperror.AppError) {
+	user, err := s.userRepo.FindByID(ctx, creatorID)
+	if err != nil {
+		return nil, nil, apperror.Unauthorized("Unauthorized", apperror.CodeUnauthorizedOperation)
+	}
+
+	if user.Role != "creator" {
+		return nil, nil, apperror.Unauthorized("Unauthorized", apperror.CodeUnauthorizedOperation)
+	}
+
+	bestSupports, nextCursor, err := s.supportRepo.GetCreatorSupporters(ctx, cursor, user.ID)
+	if err != nil {
+		return nil, nil, apperror.InternalServer("failed to get creator's best supporters").WithCause(err)
+	}
+
+	if len(bestSupports) == 0 {
+		return []BestSupporters{}, nil, nil
+	}
+
+	return bestSupports, nextCursor, nil
+}
+
+func (s *SupportService) GetFanSpending(ctx context.Context, fanID uint) (int64, *apperror.AppError) {
+	user, err := s.userRepo.FindByID(ctx, fanID)
+	if err != nil {
+		return 0, apperror.Unauthorized("invalid user", apperror.CodeUnauthorizedOperation)
+	}
+
+	if user.Role != "fan" {
+		return 0, apperror.Unauthorized("invalid role", apperror.CodeUnauthorizedOperation)
+	}
+
+	amount, err := s.supportRepo.GetFanSpendingAmount(ctx, user.ID)
+	if err != nil {
+		return 0, apperror.InternalServer("failed get fan spending").WithCause(err)
+	}
+
+	return amount, nil
+}
+
+func (s *SupportService) GetFanSupportHistory(ctx context.Context, cursor, fanID *uint) ([]FanSupportHistory, *uint, *apperror.AppError) {
+	user, err := s.userRepo.FindByID(ctx, *fanID)
+	if err != nil {
+		return nil, nil, apperror.Unauthorized("invalid user", apperror.CodeUnauthorizedOperation)
+	}
+
+	if user.Role != "fan" {
+		return nil, nil, apperror.Unauthorized("invalid role", apperror.CodeUnauthorizedOperation)
+	}
+
+	histories, nextCursor, err := s.supportRepo.GetFanSupportHistory(ctx, cursor, fanID)
+	if err != nil {
+		return nil, nil, apperror.InternalServer("failed get fan spending history").WithCause(err)
+	}
+
+	return histories, nextCursor, nil
 }

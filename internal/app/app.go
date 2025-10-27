@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/rxmy43/support-platform/internal/config"
 	"github.com/rxmy43/support-platform/internal/db"
 	"github.com/rxmy43/support-platform/internal/http/router"
+	"github.com/rxmy43/support-platform/internal/socket"
 )
 
 type AppContext struct {
@@ -25,11 +25,15 @@ func InitApp() *AppContext {
 	}
 	defer db.Close()
 
-	if err := db.SeedUsers(context.Background(), DB); err != nil {
-		log.Fatal(err)
-	}
+	// if cfg.Env == "development" {
+	// 	if err := db.SeedUsers(context.Background(), DB); err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// }
 
-	router := router.NewRouter(DB)
+	hub := socket.NewHub()
+
+	router := router.NewRouter(DB, hub)
 
 	log.Println("Application bootstrap completed!")
 

@@ -15,7 +15,6 @@ type BaseRepo[T any] struct {
 }
 
 func (r *BaseRepo[T]) Create(ctx context.Context, entity *T) error {
-	// Hapus setUUID karena kita menggunakan auto increment
 	columns, values := extractColumnsAndValues(entity)
 
 	query := fmt.Sprintf(
@@ -30,10 +29,8 @@ func (r *BaseRepo[T]) Create(ctx context.Context, entity *T) error {
 		return err
 	}
 
-	// Jika perlu mendapatkan ID yang di-generate, bisa diambil seperti ini
 	id, err := result.LastInsertId()
 	if err == nil {
-		// Set ID ke struct jika diperlukan
 		setID(entity, uint(id))
 	}
 
@@ -41,8 +38,7 @@ func (r *BaseRepo[T]) Create(ctx context.Context, entity *T) error {
 }
 
 func (r *BaseRepo[T]) Update(ctx context.Context, entity *T) error {
-	// Hapus setUUID
-	setClauses := make([]string, 0)
+	setClauses := []string{}
 	v := reflect.ValueOf(entity).Elem()
 	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
@@ -53,23 +49,23 @@ func (r *BaseRepo[T]) Update(ctx context.Context, entity *T) error {
 		}
 		setClauses = append(setClauses, fmt.Sprintf("%s=:%s", dbTag, dbTag))
 	}
+
 	query := fmt.Sprintf("UPDATE %s SET %s WHERE id=:id", r.TableName, strings.Join(setClauses, ", "))
 	_, err := r.DB.NamedExecContext(ctx, query, entity)
 	return err
 }
 
-func (r *BaseRepo[T]) Delete(ctx context.Context, id uint) error { // Ubah parameter menjadi uint
+func (r *BaseRepo[T]) Delete(ctx context.Context, id uint) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1", r.TableName)
 	_, err := r.DB.ExecContext(ctx, query, id)
 	return err
 }
 
-// Fungsi untuk set ID ke struct (opsional, jika ingin mengisi ID setelah create)
+// Set ID ke struct
 func setID[T any](entity *T, id uint) {
 	v := reflect.ValueOf(entity).Elem()
 	idField := v.FieldByName("ID")
 	if idField.IsValid() && idField.CanSet() {
-		// Cek tipe field ID
 		switch idField.Kind() {
 		case reflect.Uint, reflect.Uint32, reflect.Uint64:
 			idField.SetUint(uint64(id))
@@ -85,7 +81,7 @@ func extractColumnsAndValues[T any](entity *T) ([]string, []string) {
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 		dbTag := field.Tag.Get("db")
-		if dbTag == "" || dbTag == "id" { // Skip field ID karena auto increment
+		if dbTag == "" || dbTag == "id" {
 			continue
 		}
 		columns = append(columns, dbTag)
@@ -94,12 +90,11 @@ func extractColumnsAndValues[T any](entity *T) ([]string, []string) {
 	return columns, values
 }
 
-// Method tambahan yang berguna
 func (r *BaseRepo[T]) FindByID(ctx context.Context, id uint) (*T, error) {
 	var entity T
-	query := fmt.Sprintf("SELECT * FROM %s WHERE id = $1", r.TableName)
-	err := r.DB.GetContext(ctx, &entity, query, id)
-	if err != nil {
+	query := fmt.Sprintf("SELECT * FROM %s WHERE id=$1", r.TableName)
+	row := r.DB.QueryRowxContext(ctx, query, id)
+	if err := row.StructScan(&entity); err != nil {
 		return nil, err
 	}
 	return &entity, nil
