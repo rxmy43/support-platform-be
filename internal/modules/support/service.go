@@ -193,15 +193,17 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 		return "", apperror.InternalServer("failed get payment timestamp").WithCause(err)
 	}
 
+	fmt.Println("SUPPORT CREATOR ID => ", support.CreatorID)
+	fmt.Println("SUPPORT CREATOR Name => ", support.CreatorName)
+	fmt.Println("SUPPORT Fan ID => ", support.FanID)
+	fmt.Println("SUPPORT Fan Name => ", support.FanName)
+	fmt.Println("Rereference => ", req.Reference)
+	fmt.Println("SupportID => ", req.MerchantOrderID)
+
 	cfg := config.Load()
 	merchantKey := cfg.Duitku.MerchantKey
 
 	if !s.verifySignature(req.MerchantCode, support.PaymentTimestamp, merchantKey, req.Signature) {
-		fmt.Println("FALES VERIFY SIGNATURE HERE")
-		fmt.Println("merchantCode => ", req.MerchantCode)
-		fmt.Println("paymentTimeStamp => ", support.PaymentTimestamp)
-		fmt.Println("merchantKey => ", merchantKey)
-		fmt.Println("signature => ", req.Signature)
 		return "", apperror.Forbidden("invalid signature", apperror.CodeUnknown)
 	}
 
