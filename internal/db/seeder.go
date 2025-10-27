@@ -25,7 +25,6 @@ func SeedUsers(ctx context.Context, db *sqlx.DB) error {
 		{Name: "LeoNix", Phone: "+62811100010", Role: "fan"},
 	}
 
-	// INSERT user + RETURNING id, pakai positional params
 	userQuery := `
 		INSERT INTO users (name, phone, role)
 		VALUES ($1, $2, $3)
@@ -33,23 +32,25 @@ func SeedUsers(ctx context.Context, db *sqlx.DB) error {
 		RETURNING id;
 	`
 
-	balanceQuery := `
-		INSERT INTO balances (user_id, amount)
-		VALUES ($1, 0.00)
-		ON CONFLICT (user_id) DO NOTHING;
-	`
-
 	for _, u := range users {
 		var userID int64
 		err := db.QueryRowxContext(ctx, userQuery, u.Name, u.Phone, u.Role).Scan(&userID)
 		if err != nil {
+			// ambil existing id kalau user sudah ada
 			err := db.GetContext(ctx, &userID, "SELECT id FROM users WHERE phone=$1", u.Phone)
 			if err != nil {
 				return fmt.Errorf("failed to get user id for %s: %w", u.Name, err)
 			}
 		}
 
-		// insert balance 0
+		// insert balance 0 jika belum ada
+		balanceQuery := `
+			INSERT INTO balances (user_id, amount)
+			SELECT $1, 0.00
+			WHERE NOT EXISTS (
+				SELECT 1 FROM balances WHERE user_id=$1
+			);
+		`
 		if _, err := db.ExecContext(ctx, balanceQuery, userID); err != nil {
 			return fmt.Errorf("failed to seed balance for user %s: %w", u.Name, err)
 		}
