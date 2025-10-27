@@ -241,13 +241,16 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 		return "", apperror.InternalServer("failed committing transaction").WithCause(err)
 	}
 
-	msg := map[string]interface{}{
-		"amount":       req.Amount,
-		"reference":    req.Reference,
-		"fan_name":     support.FanName,
-		"fan_id":       support.FanID,
-		"creator_name": support.CreatorName,
-		"creator_id":   support.CreatorID,
+	msg := socket.EventMessage{
+		Event: "support_received",
+		Data: map[string]interface{}{
+			"amount":       req.Amount,
+			"reference":    req.Reference,
+			"fan_name":     support.FanName,
+			"fan_id":       support.FanID,
+			"creator_name": support.CreatorName,
+			"creator_id":   support.CreatorID,
+		},
 	}
 
 	s.hub.BroadcastToCreator(support.CreatorID, msg)
