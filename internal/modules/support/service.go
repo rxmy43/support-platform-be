@@ -197,6 +197,11 @@ func (s *SupportService) PaymentCallback(ctx context.Context, req PaymentCallbac
 	merchantKey := cfg.Duitku.MerchantKey
 
 	if !s.verifySignature(req.MerchantCode, support.PaymentTimestamp, merchantKey, req.Signature) {
+		fmt.Println("FALES VERIFY SIGNATURE HERE")
+		fmt.Println("merchantCode => ", req.MerchantCode)
+		fmt.Println("paymentTimeStamp => ", support.PaymentTimestamp)
+		fmt.Println("merchantKey => ", merchantKey)
+		fmt.Println("signature => ", req.Signature)
 		return "", apperror.Forbidden("invalid signature", apperror.CodeUnknown)
 	}
 
